@@ -18,7 +18,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       try {
         await checkSession();
         const user = await fetchUserProfile(); 
-        fetchUserProfile(); 
         setUser(user);
       } catch {
         clearAuth();

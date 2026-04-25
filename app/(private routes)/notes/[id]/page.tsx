@@ -1,28 +1,33 @@
-// app/(private routes)/notes/[id]/page.tsx
 import NotePreview from "@/components/NotePreview/NotePreview";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getNoteById } from "@/lib/api/serverApi"; 
+import { getNoteById } from "@/lib/api/serverApi";
 import type { Note } from "@/types/note";
+import {
+  HydrationBoundary,
+  QueryClient,
+  dehydrate,
+} from "@tanstack/react-query";
 
 type Props = {
   params: Promise<{ id: string }>;
   searchParams?: { [key: string]: string | string[] | undefined };
 };
 
-
 async function fetchNote(id: string): Promise<Note | null> {
   try {
-    return await getNoteById(id); 
+    return await getNoteById(id);
   } catch {
     return null;
   }
 }
 
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params; 
+export async function generateMetadata({
+  params,
+}: Props): Promise<Metadata> {
+  const { id } = await params;
   const note = await fetchNote(id);
+
   if (!note) notFound();
 
   const description = note.content.slice(0, 160);
@@ -33,7 +38,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: note.title,
       description,
-      url: `https://08-zustand-three-rho.vercel.app/notes/${id}`, // ✅ використовуємо id після await
+      url: `https://09-auth-six-ruby.vercel.app/notes/${id}`,
       images: [
         {
           url: "/og-images/note.png",
@@ -55,9 +60,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function NotePage({ params }: Props) {
-  const { id } = await params; 
-  const note = await fetchNote(id);
-  if (!note) notFound();
+  const { id } = await params;
 
-  return <NotePreview noteId={note.id} />;
+  const queryClient = new QueryClient();
+
+  try {
+    await queryClient.prefetchQuery({
+      queryKey: ["note", id],
+      queryFn: () => getNoteById(id),
+    });
+  } catch {
+    notFound();
+  }
+
+  return (
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <NotePreview noteId={id} />
+    </HydrationBoundary>
+  );
 }
