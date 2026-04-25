@@ -18,9 +18,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith(route)
   );
 
-  // Если accessToken есть
+  // access token есть
   if (accessToken) {
-    // Авторизованный пользователь не должен заходить на публичные auth-страницы
     if (isPublicRoute) {
       return NextResponse.redirect(new URL("/", request.url));
     }
@@ -28,7 +27,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Если accessToken нет, но refreshToken есть — пробуем обновить сессию
+  // access token нет, но refresh token есть
   if (!accessToken && refreshToken) {
     try {
       const session = await checkSession();
@@ -36,12 +35,20 @@ export async function proxy(request: NextRequest) {
       if (session.data?.accessToken) {
         const response = NextResponse.next();
 
+        // сохраняем новый access token
         response.cookies.set("accessToken", session.data.accessToken, {
           httpOnly: true,
           path: "/",
         });
 
-        // Если пользователь на auth-странице — отправляем домой
+        // сохраняем новый refresh token, если он пришёл
+        if (session.data?.refreshToken) {
+          response.cookies.set("refreshToken", session.data.refreshToken, {
+            httpOnly: true,
+            path: "/",
+          });
+        }
+
         if (isPublicRoute) {
           return NextResponse.redirect(new URL("/", request.url));
         }
@@ -49,22 +56,20 @@ export async function proxy(request: NextRequest) {
         return response;
       }
     } catch {
-      // Если обновление не удалось и это приватный роут
       if (isPrivateRoute) {
         return NextResponse.redirect(new URL("/sign-in", request.url));
       }
     }
   }
 
-  // Если приватный маршрут и токенов нет
+  // приватный роут без авторизации
   if (isPrivateRoute) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
-  // Всё остальное пропускаем
   return NextResponse.next();
 }
 
 export const config = {
   matcher: ["/profile/:path*", "/notes/:path*", "/sign-in", "/sign-up"],
-};
+}
