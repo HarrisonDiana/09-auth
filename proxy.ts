@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkSession } from "@/lib/api/serverApi";
 
 const privateRoutes = ["/profile", "/notes"];
 const publicRoutes = ["/sign-in", "/sign-up"];
@@ -17,8 +18,9 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith(route)
   );
 
-  // access token есть
+  // Если accessToken есть
   if (accessToken) {
+    // Авторизованный пользователь не должен заходить на публичные auth-страницы
     if (isPublicRoute) {
       return NextResponse.redirect(new URL("/", request.url));
     }
@@ -26,18 +28,40 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // access token нет, но refresh token есть
+  // Если accessToken нет, но refreshToken есть — пробуем обновить сессию
   if (!accessToken && refreshToken) {
-    return NextResponse.redirect(
-      new URL(`/api/auth/refresh?next=${pathname}`, request.url)
-    );
+    try {
+      const session = await checkSession();
+
+      if (session.data?.accessToken) {
+        const response = NextResponse.next();
+
+        response.cookies.set("accessToken", session.data.accessToken, {
+          httpOnly: true,
+          path: "/",
+        });
+
+        // Если пользователь на auth-странице — отправляем домой
+        if (isPublicRoute) {
+          return NextResponse.redirect(new URL("/", request.url));
+        }
+
+        return response;
+      }
+    } catch {
+      // Если обновление не удалось и это приватный роут
+      if (isPrivateRoute) {
+        return NextResponse.redirect(new URL("/sign-in", request.url));
+      }
+    }
   }
 
-  // приватный роут без авторизации
+  // Если приватный маршрут и токенов нет
   if (isPrivateRoute) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
+  // Всё остальное пропускаем
   return NextResponse.next();
 }
 
