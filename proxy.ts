@@ -3,11 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 const privateRoutes = ["/profile", "/notes"];
 const publicRoutes = ["/sign-in", "/sign-up"];
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
+export function proxy(request: NextRequest) {
   const accessToken = request.cookies.get("accessToken")?.value;
-  const isAuthenticated = !!accessToken;
+  const { pathname } = request.nextUrl;
 
   const isPrivateRoute = privateRoutes.some((route) =>
     pathname.startsWith(route)
@@ -17,11 +15,11 @@ export function middleware(request: NextRequest) {
     pathname.startsWith(route)
   );
 
-  if (isPrivateRoute && !isAuthenticated) {
+  if (isPrivateRoute && !accessToken) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
-  if (isPublicRoute && isAuthenticated) {
+  if (isPublicRoute && accessToken) {
     return NextResponse.redirect(new URL("/profile", request.url));
   }
 
