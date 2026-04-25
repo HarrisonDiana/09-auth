@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { api } from "../../api";
-import { parse } from "cookie";
 import { isAxiosError } from "axios";
 import { logErrorResponse } from "../../_utils/utils";
 
@@ -11,10 +10,12 @@ export async function GET() {
     const accessToken = cookieStore.get("accessToken")?.value;
     const refreshToken = cookieStore.get("refreshToken")?.value;
 
+    // если accessToken есть — пользователь авторизован
     if (accessToken) {
       return NextResponse.json({ success: true });
     }
 
+    // если accessToken нет, но есть refreshToken — обновляем сессию
     if (refreshToken) {
       const apiRes = await api.get("auth/session", {
         headers: {
@@ -22,34 +23,41 @@ export async function GET() {
         },
       });
 
-      const setCookie = apiRes.headers["set-cookie"];
+      // берём токены из ответа API, без parse()
+      const {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      } = apiRes.data ?? {};
 
-      if (setCookie) {
-        const cookieArray = Array.isArray(setCookie) ? setCookie : [setCookie];
-        for (const cookieStr of cookieArray) {
-          const parsed = parse(cookieStr);
-
-          const options = {
-            expires: parsed.Expires ? new Date(parsed.Expires) : undefined,
-            path: parsed.Path,
-            maxAge: Number(parsed["Max-Age"]),
-          };
-
-          if (parsed.accessToken)
-            cookieStore.set("accessToken", parsed.accessToken, options);
-          if (parsed.refreshToken)
-            cookieStore.set("refreshToken", parsed.refreshToken, options);
-        }
-        return NextResponse.json({ success: true }, { status: 200 });
+      if (newAccessToken) {
+        cookieStore.set("accessToken", newAccessToken, {
+          httpOnly: true,
+          path: "/",
+        });
       }
+
+      if (newRefreshToken) {
+        cookieStore.set("refreshToken", newRefreshToken, {
+          httpOnly: true,
+          path: "/",
+        });
+      }
+
+      return NextResponse.json({ success: true });
     }
-    return NextResponse.json({ success: false }, { status: 200 });
+
+    return NextResponse.json({ success: false });
   } catch (error) {
     if (isAxiosError(error)) {
       logErrorResponse(error.response?.data);
-      return NextResponse.json({ success: false }, { status: 200 });
+      return NextResponse.json({ success: false });
     }
+
     logErrorResponse({ message: (error as Error).message });
-    return NextResponse.json({ success: false }, { status: 200 });
+
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
